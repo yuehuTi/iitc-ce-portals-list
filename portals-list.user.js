@@ -1,6 +1,6 @@
 // ==UserScript==
 // @author         teo96
-// @modifier       Takurua
+// @modifier       Takurua(@yuehuTi)
 // @name           IITC plugin: Portals list
 // @category       Info
 // @version        0.5.46
