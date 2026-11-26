@@ -3,12 +3,12 @@
 // @modifier       Takurua(@yuehuTi)
 // @name           IITC plugin: Portals list
 // @category       Info
-// @version        0.5.46
+// @version        0.5.49
 // @description    Show faction statistics and a sortable portal list for the current view.
 // @id             portals-list
 // @namespace      https://github.com/IITC-CE/ingress-intel-total-conversion
-// @updateURL      https://github.com/yuehuTi/iitc-plugins/raw/refs/heads/master/portals-list.meta.js
-// @downloadURL    https://github.com/yuehuTi/iitc-plugins/raw/refs/heads/master/portals-list.user.js
+// @updateURL      https://github.com/yuehuTi/iitc-ce-portals-list/raw/refs/heads/master/portals-list.meta.js
+// @downloadURL    https://github.com/yuehuTi/iitc-ce-portals-list/raw/refs/heads/master/portals-list.user.js
 // @match          https://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @icon           https://iitc.app/extras/plugin-icons/portals-list.svg
@@ -28,8 +28,20 @@ function wrapper(plugin_info) {
   
   /* exported setup, changelog --eslint */
   /* global IITC -- eslint */
-  
+
   var changelog = [
+    {
+      version: '0.5.49',
+      changes: ['Document query operators, factions, lists and flags in the help dialog'],
+    },
+    {
+      version: '0.5.48',
+      changes: ['Keep the window at least wide enough for three pies and their legends, and keep the action bar in place when the list is empty'],
+    },
+    {
+      version: '0.5.47',
+      changes: ['Filter the detail list with a boolean query beside Export CSV'],
+    },
     {
       version: '0.5.46',
       changes: ['Fetch full portal details for all selected portals before CSV export'],
@@ -59,7 +71,7 @@ function wrapper(plugin_info) {
       changes: ['Localize buttons, titles and UI copy for Chinese or English system language'],
     },
   ];
-  
+
   window.plugin.portalslist = function () {};
 
   var USE_ZH = (navigator.languages && navigator.languages.length
@@ -88,7 +100,17 @@ function wrapper(plugin_info) {
     needDrawTools: 'Enable the Draw tools plugin first',
     nothingToShow: 'Nothing to show!',
     help: 'Help',
-    helpBody: '<p>Click table headers to sort.</p><p>Click a pie legend to filter that group; click again to clear.</p>',
+    queryFilter: 'Filter',
+    queryReset: 'Reset',
+    queryPlaceholder: 'level >= 6 AND team = ENL',
+    queryTip: 'Filter the detail list. Reset, or an empty expression, shows every portal again.',
+    queryInvalid: 'Invalid expression',
+    queryIncomplete: 'Incomplete expression',
+    queryParen: 'Missing closing parenthesis',
+    queryValue: 'Missing value',
+    queryTail: 'Unexpected text after the expression',
+    queryTeam: 'Unknown faction',
+    queryOp: 'Operator not valid here',
     selectAllTip: 'Select / deselect all in the current list',
     loadingDetails: 'Loading occupied portal details {cur}/{total}',
     filterTip: 'Show only {label} portals',
@@ -114,7 +136,17 @@ function wrapper(plugin_info) {
     needDrawTools: '需要先启用 Draw tools 插件',
     nothingToShow: '没有可显示的内容',
     help: '帮助',
-    helpBody: '<p>点击表头可排序。</p><p>点击饼图图例可筛选该分组，再点一次清除筛选。</p>',
+    queryFilter: '过滤',
+    queryReset: '重置',
+    queryPlaceholder: 'level >= 6 AND team = ENL',
+    queryTip: '按表达式过滤详细列表。点重置，或表达式为空，即显示全部 Portal。',
+    queryInvalid: '表达式无效',
+    queryIncomplete: '表达式不完整',
+    queryParen: '缺少右括号',
+    queryValue: '缺少比较值',
+    queryTail: '表达式末尾有多余内容',
+    queryTeam: '无法识别的阵营',
+    queryOp: '这里不能使用这个运算符',
     selectAllTip: '全选 / 取消全选当前列表',
     loadingDetails: '正在读取已占领Portal的详细信息 {cur}/{total}',
     filterTip: '只显示 {label} Portal',
@@ -131,6 +163,123 @@ function wrapper(plugin_info) {
     });
   }
 
+  function helpBodyHtml() {
+    if (USE_ZH) {
+      return [
+        '<p>点击表头可排序。</p>',
+        '<p>点击饼图图例可筛选该分组，再点一次清除筛选。</p>',
+        '<p>导出 CSV 右侧的过滤框可筛选详细列表。点重置，或表达式为空，即恢复全部。表达式写错时输入会标红，当前列表不变。饼图筛选仍然同时生效。</p>',
+        '<h3>运算符</h3>',
+        '<ul>',
+        '<li><code>AND</code>、<code>且</code>：两个条件都成立。紧挨着写的条件也是 AND，例如 <code>level &gt;= 6 team = ENL</code>。</li>',
+        '<li><code>OR</code>、<code>或</code>：任一条件成立。<code>AND</code> 比 <code>OR</code> 更紧，需要先算的一组用括号。</li>',
+        '<li><code>NOT</code>、<code>非</code>，或在条件前加 <code>-</code>：否定。例如 <code>NOT visited</code>、<code>-captured</code>。</li>',
+        '<li><code>=</code> 相等，<code>!=</code> 不相等。文字不区分大小写。</li>',
+        '<li><code>&gt;</code> <code>&gt;=</code> <code>&lt;</code> <code>&lt;=</code> 只用于数值。</li>',
+        '<li><code>~</code> 包含，用于名字、主人和共振器主人。</li>',
+        '<li><code>:</code> 是简写。文字表示包含（<code>name:park</code>），数值表示相等（<code>level:6</code>），也可以带比较符（<code>level:&gt;=6</code>）。</li>',
+        '<li><code>6..8</code> 是闭区间，含两端。<code>level:6..8</code> 等于 <code>level &gt;= 6 AND level &lt;= 8</code>。</li>',
+        '<li><code>has</code> 表示列表里有这一项。</li>',
+        '</ul>',
+        '<p>没写字段的词按名字包含来匹配。名字里有空格时加引号：<code>name ~ "central park"</code>。</p>',
+        '<h3>字段</h3>',
+        '<ul>',
+        '<li>名字：<code>name</code> <code>title</code> <code>portal</code> <code>名字</code> <code>名称</code></li>',
+        '<li>等级：<code>level</code> <code>lvl</code> <code>lv</code> <code>等级</code></li>',
+        '<li>阵营：<code>team</code> <code>faction</code> <code>阵营</code></li>',
+        '<li>血量：<code>health</code> <code>hp</code> <code>血量</code></li>',
+        '<li>共振器数量：<code>res</code> <code>rescount</code></li>',
+        '<li>盾的减伤合计：<code>shields</code> <code>shield</code> <code>盾</code></li>',
+        '<li>链接数：<code>links</code> <code>link</code> <code>链接</code></li>',
+        '<li>区域数：<code>fields</code> <code>field</code> <code>区域</code></li>',
+        '<li>敌方 AP：<code>ap</code></li>',
+        '<li>主人：<code>owner</code> <code>主人</code>。<code>me</code> 表示当前玩家。</li>',
+        '</ul>',
+        '<h3>阵营</h3>',
+        '<ul>',
+        '<li>启蒙：<code>ENL</code> <code>E</code> <code>enlightened</code> <code>green</code> <code>绿</code> <code>启蒙</code></li>',
+        '<li>抵抗：<code>RES</code> <code>R</code> <code>resistance</code> <code>blue</code> <code>蓝</code> <code>抵抗</code></li>',
+        '<li>中立：<code>NEU</code> <code>N</code> <code>neutral</code> <code>none</code> <code>白</code> <code>中立</code> <code>灰</code></li>',
+        '<li>Machina：<code>MAC</code> <code>machina</code> <code>红</code></li>',
+        '<li>我方：<code>friendly</code> <code>友方</code> <code>我方</code></li>',
+        '<li>敌方：<code>enemy</code> <code>敌方</code>。有阵营，并且不是自己的阵营。</li>',
+        '</ul>',
+        '<p>例如 <code>team = ENL</code>、<code>team = friendly</code>、<code>阵营 != 中立</code>。</p>',
+        '<h3>列表</h3>',
+        '<ul>',
+        '<li><code>mods</code> / <code>mod</code>：<code>has</code> 按短名、插件名或稀有度匹配，不区分大小写。短名包括 <code>FA</code>、<code>Turret</code>、<code>HS</code>、<code>MH</code>、<code>SBUL</code>、<code>UL</code>、<code>LA</code>、<code>ITO</code>、<code>Aegis</code>，以及盾的 <code>C</code> / <code>R</code> / <code>VR</code> 加减伤。例如 <code>mods has VR</code>、<code>mods has shield</code>。</li>',
+        '<li><code>mods &gt;= 2</code> 比较的是插件个数，不是等级。</li>',
+        '<li><code>resonator</code> / <code>resonators</code>：比较的是任意一个共振器的等级。<code>resonator &gt;= 7</code> 表示至少有一个 7 级或以上。<code>resonator = 8</code> 和 <code>resonator has 8</code> 表示有 8 级共振器。</li>',
+        '<li><code>resonator.owner</code>：任意一个共振器的主人，可用 <code>=</code>、<code>!=</code>、<code>~</code> 和 <code>me</code>。例如 <code>resonator.owner = me</code>。</li>',
+        '</ul>',
+        '<h3>标志</h3>',
+        '<p>单独写表示成立，也可以写成 <code>visited = true</code> 或 <code>visited = false</code>。真：<code>true</code> <code>yes</code> <code>1</code> <code>是</code>。假：<code>false</code> <code>no</code> <code>0</code> <code>否</code>。</p>',
+        '<ul>',
+        '<li><code>visited</code> / <code>visit</code>：到访过，包括已占领。</li>',
+        '<li><code>captured</code> / <code>cap</code>：已占领。</li>',
+        '<li><code>scout</code>：已侦察控制。</li>',
+        '</ul>',
+        '<p>盾、插件、主人、共振器、到访、占领和侦察要等 Portal 详情。详情还没到时，这些条件先不匹配，读到后再筛。<code>NOT visited</code> 在详情未知时也不会把该 Portal 放进来。</p>',
+      ].join('');
+    }
+    return [
+      '<p>Click table headers to sort.</p>',
+      '<p>Click a pie legend to filter that group; click again to clear.</p>',
+      '<p>The filter box beside Export CSV filters the detail list. Reset, or an empty expression, shows every portal again. An invalid expression turns red and leaves the current list unchanged. A pie filter still applies.</p>',
+      '<h3>Operators</h3>',
+      '<ul>',
+      '<li><code>AND</code>: both sides match. Adjacent terms are also AND, for example <code>level &gt;= 6 team = ENL</code>.</li>',
+      '<li><code>OR</code>: either side matches. <code>AND</code> binds tighter than <code>OR</code>. Use parentheses to group.</li>',
+      '<li><code>NOT</code>, or <code>-</code> before a term: negation. Examples: <code>NOT visited</code>, <code>-captured</code>.</li>',
+      '<li><code>=</code> equals, <code>!=</code> does not equal. Text is case-insensitive.</li>',
+      '<li><code>&gt;</code> <code>&gt;=</code> <code>&lt;</code> <code>&lt;=</code> apply to numbers.</li>',
+      '<li><code>~</code> contains. Use it for name, owner, and resonator owner.</li>',
+      '<li><code>:</code> is shorthand. For text it means contains (<code>name:park</code>). For numbers it means equals (<code>level:6</code>), and it can carry a comparison (<code>level:&gt;=6</code>).</li>',
+      '<li><code>6..8</code> is an inclusive range. <code>level:6..8</code> means <code>level &gt;= 6 AND level &lt;= 8</code>.</li>',
+      '<li><code>has</code> means the list contains that item.</li>',
+      '</ul>',
+      '<p>A bare word matches a name that contains it. Quote a name that has spaces: <code>name ~ "central park"</code>.</p>',
+      '<h3>Fields</h3>',
+      '<ul>',
+      '<li>Name: <code>name</code> <code>title</code> <code>portal</code></li>',
+      '<li>Level: <code>level</code> <code>lvl</code> <code>lv</code></li>',
+      '<li>Faction: <code>team</code> <code>faction</code></li>',
+      '<li>Health: <code>health</code> <code>hp</code></li>',
+      '<li>Resonator count: <code>res</code> <code>rescount</code></li>',
+      '<li>Shield mitigation total: <code>shields</code> <code>shield</code></li>',
+      '<li>Link count: <code>links</code> <code>link</code></li>',
+      '<li>Field count: <code>fields</code> <code>field</code></li>',
+      '<li>Enemy AP: <code>ap</code></li>',
+      '<li>Owner: <code>owner</code>. <code>me</code> is the current player.</li>',
+      '</ul>',
+      '<h3>Factions</h3>',
+      '<ul>',
+      '<li>Enlightened: <code>ENL</code> <code>E</code> <code>enlightened</code> <code>green</code></li>',
+      '<li>Resistance: <code>RES</code> <code>R</code> <code>resistance</code> <code>blue</code></li>',
+      '<li>Neutral: <code>NEU</code> <code>N</code> <code>neutral</code> <code>none</code></li>',
+      '<li>Machina: <code>MAC</code> <code>machina</code></li>',
+      '<li>Your faction: <code>friendly</code></li>',
+      '<li>The other faction: <code>enemy</code>. A faction portal that is not yours.</li>',
+      '</ul>',
+      '<p>Examples: <code>team = ENL</code>, <code>team = friendly</code>, <code>team != NEU</code>.</p>',
+      '<h3>Lists</h3>',
+      '<ul>',
+      '<li><code>mods</code> / <code>mod</code>: <code>has</code> matches the short label, mod name, or rarity, ignoring case. Short labels include <code>FA</code>, <code>Turret</code>, <code>HS</code>, <code>MH</code>, <code>SBUL</code>, <code>UL</code>, <code>LA</code>, <code>ITO</code>, <code>Aegis</code>, and shield labels <code>C</code> / <code>R</code> / <code>VR</code> plus mitigation. Examples: <code>mods has VR</code>, <code>mods has shield</code>.</li>',
+      '<li><code>mods &gt;= 2</code> compares how many mods are installed, not their level.</li>',
+      '<li><code>resonator</code> / <code>resonators</code>: the comparison applies to any one resonator level. <code>resonator &gt;= 7</code> means at least one resonator is level 7 or higher. <code>resonator = 8</code> and <code>resonator has 8</code> mean an R8 is present.</li>',
+      '<li><code>resonator.owner</code>: any resonator owner, with <code>=</code>, <code>!=</code>, <code>~</code>, and <code>me</code>. Example: <code>resonator.owner = me</code>.</li>',
+      '</ul>',
+      '<h3>Flags</h3>',
+      '<p>A bare flag means true. <code>visited = true</code> and <code>visited = false</code> also work. True: <code>true</code> <code>yes</code> <code>1</code>. False: <code>false</code> <code>no</code> <code>0</code>.</p>',
+      '<ul>',
+      '<li><code>visited</code> / <code>visit</code>: visited, including captured.</li>',
+      '<li><code>captured</code> / <code>cap</code>: captured.</li>',
+      '<li><code>scout</code>: scout controlled.</li>',
+      '</ul>',
+      '<p>Shields, mods, owner, resonators, visited, captured, and scout wait for portal details. Until those details arrive, such a condition does not match; the list is filtered again when they do. <code>NOT visited</code> does not include a portal whose history is still unknown.</p>',
+    ].join('');
+  }
+
   function portalsCountTitle(count) {
     return t('portalsCount', {
       n: count,
@@ -144,15 +293,15 @@ function wrapper(plugin_info) {
     if (text != null) node.textContent = text;
     return node;
   }
-  
+
   function abbreviate(label) {
     return label.replaceAll(/[^a-z]/gi, '').substring(0, 3).capitalize();
   }
-  
+
   function polygonTestFn() {
     return window.pnpoly || (window.IITC && window.IITC.utils && window.IITC.utils.isPointInPolygon);
   }
-  
+
   function ringFromLayer(layer) {
     if (!(window.L && layer instanceof L.Polygon)) return null;
     var ring = layer._rings && layer._rings[0] && layer._rings[0].length ? layer._rings[0] : null;
@@ -166,7 +315,7 @@ function wrapper(plugin_info) {
     }
     return ring && ring.length ? ring : null;
   }
-  
+
   function collectPolygonRings() {
     var drawTools = window.plugin.drawTools;
     var rings = [];
@@ -177,7 +326,7 @@ function wrapper(plugin_info) {
     });
     return rings;
   }
-  
+
   function portalInsideDrawnPolygon(portal) {
     if (!portal || !portal.getLatLng) return false;
     var test = polygonTestFn();
@@ -191,7 +340,7 @@ function wrapper(plugin_info) {
     return false;
   }
   window.plugin.portalslist.portalInsideDrawnPolygon = portalInsideDrawnPolygon;
-  
+
   function onlyInPolygonsControl() {
     var label = document.createElement('label');
     label.className = 'only-in-polygons';
@@ -209,7 +358,7 @@ function wrapper(plugin_info) {
     label.appendChild(text);
     return label;
   }
-  
+
   function listShell(pies, body) {
     var container = $('<div>');
     container.append(onlyInPolygonsControl());
@@ -221,9 +370,9 @@ function wrapper(plugin_info) {
     container.append(selectionActionsBar());
     return container;
   }
-  
+
   var ROW_LEADING = 2; // checkbox + index
-  
+
   function selectionActionsBar() {
     var bar = document.createElement('div');
     bar.className = 'selection-actions';
@@ -239,9 +388,98 @@ function wrapper(plugin_info) {
       btn.addEventListener('click', item.action);
       bar.appendChild(btn);
     });
+    bar.appendChild(portalQueryControl());
     return bar;
   }
-  
+
+  function portalQueryInput() {
+    var root = document.getElementById('portalslist');
+    return root && root.querySelector('input.portal-query-input');
+  }
+
+  function portalQueryControl() {
+    var ns = window.plugin.portalslist;
+    var wrap = document.createElement('span');
+    wrap.className = 'portal-query';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'portal-query-input';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.placeholder = t('queryPlaceholder');
+    input.title = ns.queryErrorMessage || t('queryTip');
+    input.value = ns.queryText || '';
+    input.setAttribute('aria-label', t('queryFilter'));
+    if (ns.queryError) input.classList.add('query-error');
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applyPortalQuery();
+      }
+    });
+    input.addEventListener('input', function () {
+      input.classList.remove('query-error');
+      ns.queryError = false;
+      ns.queryErrorMessage = '';
+      input.title = t('queryTip');
+    });
+    wrap.appendChild(input);
+    wrap.appendChild(queryActionButton(t('queryFilter'), t('queryTip'), applyPortalQuery));
+    wrap.appendChild(queryActionButton(t('queryReset'), t('queryTip'), resetPortalQuery));
+    return wrap;
+  }
+
+  function queryActionButton(label, title, action) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.title = title;
+    btn.addEventListener('click', action);
+    return btn;
+  }
+
+  function markPortalQuery(input, invalid, message) {
+    var ns = window.plugin.portalslist;
+    ns.queryError = !!invalid;
+    ns.queryErrorMessage = invalid ? (message || t('queryInvalid')) : '';
+    if (!input) return;
+    input.classList.toggle('query-error', !!invalid);
+    input.title = ns.queryErrorMessage || t('queryTip');
+  }
+
+  function applyPortalQuery() {
+    var input = portalQueryInput();
+    if (!input) return;
+    var ns = window.plugin.portalslist;
+    var text = input.value.trim();
+    if (!text) {
+      ns.queryText = input.value;
+      ns.queryPredicate = null;
+      markPortalQuery(input, false);
+      refreshDetailFilter();
+      return;
+    }
+    try {
+      ns.queryPredicate = compilePortalQuery(text);
+      ns.queryText = input.value;
+      markPortalQuery(input, false);
+      refreshDetailFilter();
+      ensureQueryDetails();
+    } catch (err) {
+      markPortalQuery(input, true, err && err.message);
+    }
+  }
+
+  function resetPortalQuery() {
+    var input = portalQueryInput();
+    var ns = window.plugin.portalslist;
+    ns.queryText = '';
+    ns.queryPredicate = null;
+    if (input) input.value = '';
+    markPortalQuery(input, false);
+    refreshDetailFilter();
+  }
+
   function visibleListPortals() {
     return filteredListPortals().filter(function (obj) {
       return obj.row && obj.row.style.display !== 'none';
@@ -254,7 +492,7 @@ function wrapper(plugin_info) {
       return !!(box && box.checked);
     });
   }
-  
+
   function syncSelectAllCheckbox() {
     var root = document.getElementById('portalslist');
     var master = root && root.querySelector('th.col-select input.select-all');
@@ -267,7 +505,7 @@ function wrapper(plugin_info) {
     master.checked = visible.length > 0 && checked === visible.length;
     master.indeterminate = checked > 0 && checked < visible.length;
   }
-  
+
   function setVisibleSelection(checked) {
     visibleListPortals().forEach(function (obj) {
       var box = obj.row.querySelector('input.portal-select');
@@ -275,7 +513,7 @@ function wrapper(plugin_info) {
     });
     syncSelectAllCheckbox();
   }
-  
+
   function requireSelectedPortals() {
     var selected = getSelectedPortalObjs();
     if (!selected.length) {
@@ -284,7 +522,7 @@ function wrapper(plugin_info) {
     }
     return selected;
   }
-  
+
   function bookmarkSelectedPortals() {
     var selected = requireSelectedPortals();
     if (!selected) return;
@@ -307,7 +545,7 @@ function wrapper(plugin_info) {
       window.runHooks('pluginBkmrksEdit', { target: 'portal', action: 'add', guid: guid });
     });
   }
-  
+
   function addDrawMarkersForSelected() {
     var selected = requireSelectedPortals();
     if (!selected) return;
@@ -325,13 +563,13 @@ function wrapper(plugin_info) {
     });
     if (typeof drawTools.save === 'function') drawTools.save();
   }
-  
+
   function csvEscape(value) {
     var text = value == null ? '' : String(value);
     if (/[",\n\r]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
     return text;
   }
-  
+
   function csvFieldValue(field, portal) {
     var value = field.value(portal);
     if (field.title === 'Links' && value && value.in && value.out) return value.in.length + value.out.length;
@@ -519,7 +757,7 @@ function wrapper(plugin_info) {
       setDetailStatus(t('loadingDetails', { cur: cur, total: total }));
     }, openExport);
   }
-  
+
   function portalsListBody() {
     if (getPortals()) {
       return portalTable(
@@ -528,20 +766,30 @@ function wrapper(plugin_info) {
         window.plugin.portalslist.filter
       );
     }
-    return listShell([], $('<table class="noPortals"><tr><td>' + t('nothingToShow') + '</td></tr></table>'));
+    return listShell([], emptyDetailTable());
   }
-  
+
+  function emptyDetailTable() {
+    var tableDiv = document.createElement('div');
+    tableDiv.className = 'table-container';
+    var table = document.createElement('table');
+    table.className = 'noPortals';
+    table.insertRow(-1).insertCell(-1).textContent = t('nothingToShow');
+    tableDiv.appendChild(table);
+    return tableDiv;
+  }
+
   // fields: { title, value(portal), sortValue?, sort?, format?, defaultOrder? }
   var RESO_XM = [0, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000];
   var MOD_CHIP_COLOR = { COMMON: '#0d7a45', RARE: '#1d4e9e', VERY_RARE: '#6a3db8' };
   var NEUTRAL_COLOR = '#666666';
-  
+
   function isShieldMod(mod) {
     if (!mod) return false;
     if (mod.stats && mod.stats.MITIGATION) return true;
     return /shield/i.test(mod.name || '');
   }
-  
+
   function shieldLabel(mod) {
     var mit = mod.stats && mod.stats.MITIGATION ? String(mod.stats.MITIGATION) : '';
     if (/aegis/i.test(mod.name || '')) return 'Aegis' + mit;
@@ -549,7 +797,7 @@ function wrapper(plugin_info) {
     var prefix = rarity === 'VERY_RARE' ? 'VR' : rarity === 'RARE' ? 'R' : rarity === 'COMMON' ? 'C' : '';
     return prefix + mit || mod.name || '?';
   }
-  
+
   function modLabel(mod) {
     if (isShieldMod(mod)) return shieldLabel(mod);
     var name = (mod.name || '').toLowerCase();
@@ -565,14 +813,14 @@ function wrapper(plugin_info) {
     if (name.indexOf('ito') >= 0) return 'ITO';
     return mod.name || '?';
   }
-  
+
   function shieldMitigationTotal(mods) {
     return mods.reduce(function (sum, mod) {
       if (!isShieldMod(mod)) return sum;
       return sum + (parseInt(mod.stats && mod.stats.MITIGATION, 10) || 0);
     }, 0);
   }
-  
+
   function modTooltip(mod) {
     var lines = [];
     var name = mod.name || 'mod';
@@ -587,7 +835,7 @@ function wrapper(plugin_info) {
     }
     return lines.join('\n');
   }
-  
+
   function appendGearChip(cell, text, background, title, lightText) {
     var chip = document.createElement('span');
     chip.className = 'gear-chip';
@@ -597,7 +845,7 @@ function wrapper(plugin_info) {
     if (title) chip.title = title;
     cell.appendChild(chip);
   }
-  
+
   function formatGearCell(cell, mods, labeler) {
     cell.className = 'equip';
     if (!mods.length) {
@@ -610,7 +858,7 @@ function wrapper(plugin_info) {
       appendGearChip(cell, labeler(mod), background, modTooltip(mod), false);
     });
   }
-  
+
   function formatResonatorCell(cell, list) {
     if (!list) return;
     cell.className = 'equip';
@@ -630,7 +878,7 @@ function wrapper(plugin_info) {
       appendGearChip(cell, String(level), background, title, level > 0 && level <= 2);
     });
   }
-  
+
   function gearSignature(list, pick) {
     if (!list) return '';
     return list
@@ -639,7 +887,7 @@ function wrapper(plugin_info) {
       })
       .join(',');
   }
-  
+
   window.plugin.portalslist.fields = [
     {
       title: 'Portal Name',
@@ -810,7 +1058,7 @@ function wrapper(plugin_info) {
           title += `Friendly AP:\t${value.friendlyAp}\n- deploy ${8 - portal.options.data.resCount} resonator(s)\n- upgrades/mods unknown\n`;
         }
         title += `Enemy AP:\t${value.enemyAp}\n- Destroy AP:\t${value.destroyAp}\n- Capture AP:\t${value.captureAp}`;
-  
+
         $(cell).addClass('alignR').addClass('help').prop('title', title).html(window.digits(value.enemyAp));
       },
       defaultOrder: -1,
@@ -852,7 +1100,7 @@ function wrapper(plugin_info) {
       },
     },
   ];
-  
+
   function cachedPortalMetric(cacheName, guid, getter) {
     var cache = window.plugin.portalslist[cacheName];
     if (!cache) return getter(guid);
@@ -863,11 +1111,11 @@ function wrapper(plugin_info) {
   function portalLinks(guid) {
     return cachedPortalMetric('linkCache', guid, window.getPortalLinks);
   }
-  
+
   function portalFieldCount(guid) {
     return cachedPortalMetric('fieldCache', guid, window.getPortalFieldsCount);
   }
-  
+
   function withPortalMetricCache(fn) {
     var ns = window.plugin.portalslist;
     if (ns.linkCache && ns.fieldCache) return fn();
@@ -882,7 +1130,7 @@ function wrapper(plugin_info) {
       ns.fieldCache = previousFields || null;
     }
   }
-  
+
   function portalMetricSignature(portal) {
     var guid = portal.options.guid;
     var links = portalLinks(guid);
@@ -890,7 +1138,7 @@ function wrapper(plugin_info) {
     var outbound = links && links.out ? links.out.length : 0;
     return inbound + ':' + outbound + ':' + portalFieldCount(guid);
   }
-  
+
   function paintCell(cell, field, portal, value) {
     cell.className = '';
     cell.removeAttribute('style');
@@ -899,12 +1147,12 @@ function wrapper(plugin_info) {
     if (field.format) field.format(cell, portal, value);
     else cell.textContent = value == null ? '' : value;
   }
-  
+
   function rowMatchesFields(row) {
     var fields = window.plugin.portalslist.fields;
     return !!(row && fields && row.cells.length === fields.length + ROW_LEADING);
   }
-  
+
   function createPortalRow(portal) {
     var row = document.createElement('tr');
     row.dataset.guid = portal.options.guid;
@@ -924,7 +1172,7 @@ function wrapper(plugin_info) {
     for (var i = 0; i < count; i++) row.insertCell(-1);
     return { portal: portal, sortValues: [], row: row };
   }
-  
+
   function fillPortalRow(obj) {
     var portal = obj.portal;
     var fields = window.plugin.portalslist.fields;
@@ -945,25 +1193,25 @@ function wrapper(plugin_info) {
     }
     return dirty;
   }
-  
+
   function getPortals(reuseRows) {
     var ns = window.plugin.portalslist;
     var found = false;
     var displayBounds = window.map.getBounds();
     var previous = reuseRows ? (ns.byGuid || {}) : {};
-  
+
     ns.listPortals = [];
     ns.byGuid = Object.create(null);
     ns.linkCache = Object.create(null);
     ns.fieldCache = Object.create(null);
     if (ns.onlyInPolygons) ns.polygonRings = collectPolygonRings();
-  
+
     try {
       $.each(window.portals, function (i, portal) {
         if (!displayBounds.contains(portal.getLatLng())) return true;
         if (!('title' in portal.options.data)) return true;
         if (ns.onlyInPolygons && !ns.portalInsideDrawnPolygon(portal)) return true;
-  
+
         found = true;
         var guid = portal.options.guid;
         var obj = previous[guid];
@@ -978,18 +1226,18 @@ function wrapper(plugin_info) {
       ns.fieldCache = null;
       ns.polygonRings = null;
     }
-  
+
     return found;
   }
   window.plugin.portalslist.getPortals = getPortals;
-  
+
   function updatePortalListTitle() {
-    var count = filteredListPortals().length;
+    var count = shownPortalCount();
     var root = document.getElementById('portalslist');
     var titleNode = root && root.closest('.ui-dialog') && root.closest('.ui-dialog').querySelector('.ui-dialog-title');
     if (titleNode) titleNode.textContent = portalsCountTitle(count);
   }
-  
+
   function sortListPortals() {
     var ns = window.plugin.portalslist;
     var sortBy = ns.sortBy;
@@ -1010,7 +1258,7 @@ function wrapper(plugin_info) {
       return 0;
     });
   }
-  
+
   function placePortalRows(table) {
     var ns = window.plugin.portalslist;
     var filter = ns.filter || 0;
@@ -1025,7 +1273,7 @@ function wrapper(plugin_info) {
     ns.listPortals.forEach(function (obj) {
       var row = obj.row;
       table.appendChild(row);
-      if (!portalMatchesFilter(obj.portal, filter)) {
+      if (!portalMatchesFilter(obj.portal, filter) || !portalMatchesQuery(obj.portal)) {
         row.style.display = 'none';
         return;
       }
@@ -1035,7 +1283,7 @@ function wrapper(plugin_info) {
     });
     syncSelectAllCheckbox();
   }
-  
+
   function updateSortHeaders(table) {
     var ns = window.plugin.portalslist;
     if (!table) {
@@ -1051,7 +1299,7 @@ function wrapper(plugin_info) {
       else cell.classList.remove('sorted');
     }
   }
-  
+
   function resortPortals(sortBy, sortOrder) {
     var ns = window.plugin.portalslist;
     ns.sortBy = sortBy;
@@ -1066,7 +1314,7 @@ function wrapper(plugin_info) {
     placePortalRows(table);
     updateSortHeaders();
   }
-  
+
   function setPortalFilter(filter) {
     var ns = window.plugin.portalslist;
     ns.filter = filter;
@@ -1082,13 +1330,13 @@ function wrapper(plugin_info) {
     updatePortalListTitle();
     scheduleLoadOccupiedPortalDetails();
   }
-  
+
   function afterLayout(fn) {
     window.requestAnimationFrame(function () {
       window.requestAnimationFrame(fn);
     });
   }
-  
+
   function reloadPortalsInPlace() {
     var ns = window.plugin.portalslist;
     var root = document.getElementById('portalslist');
@@ -1107,12 +1355,12 @@ function wrapper(plugin_info) {
     scheduleLoadOccupiedPortalDetails();
     scheduleFitLayout();
   }
-  
-  
+
+
   function detailStatusNode() {
     return el('div', 'detail-status', window.plugin.portalslist.detailStatus || '');
   }
-  
+
   function portalsListIsOpen() {
     var root = document.getElementById('portalslist');
     if (!root) return false;
@@ -1120,7 +1368,7 @@ function wrapper(plugin_info) {
     var dialog = root.closest('.ui-dialog');
     return !!(dialog && dialog.offsetParent !== null);
   }
-  
+
   function copyDetailFields(target, fresh) {
     if (!target || !fresh) return;
     ['level', 'health', 'resCount', 'owner', 'image', 'title'].forEach(function (key) {
@@ -1130,7 +1378,7 @@ function wrapper(plugin_info) {
     if (fresh.resonators) target.resonators = fresh.resonators;
     if (fresh.history) target.history = fresh.history;
   }
-  
+
   function mergeFreshDetails(guid, details) {
     var portal = window.portals[guid];
     if (!portal) return;
@@ -1143,7 +1391,7 @@ function wrapper(plugin_info) {
       if (details && details !== target) copyDetailFields(target, details);
     });
   }
-  
+
   function applyCachedDetails(portal) {
     if (!window.portalDetail || typeof window.portalDetail.isFresh !== 'function') return false;
     var guid = portal.options.guid;
@@ -1151,7 +1399,7 @@ function wrapper(plugin_info) {
     mergeFreshDetails(guid);
     return !!(portal.options.data && portal.options.data.history);
   }
-  
+
   function scheduleStatsRefresh() {
     var ns = window.plugin.portalslist;
     ns.statsDirty = true;
@@ -1160,7 +1408,7 @@ function wrapper(plugin_info) {
     var elapsed = ns.statsShownAt ? Date.now() - ns.statsShownAt : interval;
     ns.statsRefreshTimer = window.setTimeout(flushStatsRefresh, Math.max(0, interval - elapsed));
   }
-  
+
   function flushStatsRefresh() {
     var ns = window.plugin.portalslist;
     ns.statsRefreshTimer = 0;
@@ -1173,7 +1421,7 @@ function wrapper(plugin_info) {
     ns.statsShownAt = Date.now();
     refreshStatsPanels();
   }
-  
+
   function scheduleFitLayout() {
     var ns = window.plugin.portalslist;
     if (ns.detailFitFrame) return;
@@ -1182,14 +1430,14 @@ function wrapper(plugin_info) {
       fitPortalsListLayout();
     });
   }
-  
+
   function onPortalDetailLoaded(data) {
     if (!data || !data.success || !data.guid) return;
     if (!document.getElementById('portalslist')) return;
     mergeFreshDetails(data.guid, data.details);
     repaintDetailGuid(data.guid);
   }
-  
+
   function setDetailStatus(text) {
     window.plugin.portalslist.detailStatus = text || '';
     var root = document.getElementById('portalslist');
@@ -1201,7 +1449,7 @@ function wrapper(plugin_info) {
     }
     node.textContent = window.plugin.portalslist.detailStatus;
   }
-  
+
   function portalDetailSignature(portal) {
     var data = (portal && portal.options && portal.options.data) || {};
     var history = data.history || {};
@@ -1224,7 +1472,7 @@ function wrapper(plugin_info) {
       }) : '',
     ].join(':');
   }
-  
+
   function repaintDetailRow(row) {
     var guid = row.dataset.guid;
     var ns = window.plugin.portalslist;
@@ -1237,15 +1485,16 @@ function wrapper(plugin_info) {
       return fillPortalRow(obj);
     });
   }
-  
+
   function repaintDetailGuid(guid) {
     var obj = window.plugin.portalslist.byGuid && window.plugin.portalslist.byGuid[guid];
     if (!obj || !obj.row) return;
     if (!repaintDetailRow(obj.row)) return;
+    if (window.plugin.portalslist.queryPredicate) refreshDetailFilter();
     scheduleStatsRefresh();
     scheduleFitLayout();
   }
-  
+
   function isRowInView(row) {
     if (!row || row.style.display === 'none') return false;
     var root = document.getElementById('portalslist');
@@ -1256,7 +1505,7 @@ function wrapper(plugin_info) {
     if (rRect.height <= 0) return false;
     return rRect.bottom > cRect.top + 1 && rRect.top < cRect.bottom - 1;
   }
-  
+
   function refreshVisibleDetailRows() {
     var root = document.getElementById('portalslist');
     if (!root || !portalsListIsOpen()) return;
@@ -1270,7 +1519,7 @@ function wrapper(plugin_info) {
     });
     if (changed) scheduleStatsRefresh();
   }
-  
+
   function onDetailScroll() {
     var ns = window.plugin.portalslist;
     if (ns.detailScrollFrame) return;
@@ -1280,7 +1529,32 @@ function wrapper(plugin_info) {
       enqueueVisibleDetailRequests();
     });
   }
-  
+
+  function pieCardsMinWidth(root) {
+    var pies = root.querySelector('.stats-pies');
+    if (!pies) return 0;
+    var cards = pies.querySelectorAll('.stats-pie');
+    if (!cards.length) return 0;
+    var sum = 0;
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var prevFlex = card.style.flex;
+      var prevWidth = card.style.width;
+      var prevMin = card.style.minWidth;
+      card.style.flex = '0 0 auto';
+      card.style.width = 'max-content';
+      card.style.minWidth = 'max-content';
+      sum += card.offsetWidth;
+      card.style.flex = prevFlex;
+      card.style.width = prevWidth;
+      card.style.minWidth = prevMin;
+    }
+    var gap = parseFloat(window.getComputedStyle(pies).columnGap);
+    if (isNaN(gap)) gap = 20;
+    if (cards.length > 1) sum += gap * (cards.length - 1);
+    return Math.ceil(sum);
+  }
+
   function fitPortalsListLayout() {
     var root = document.getElementById('portalslist');
     if (!root || root.classList.contains('mobile')) return;
@@ -1288,40 +1562,49 @@ function wrapper(plugin_info) {
     var content = dialog && dialog.querySelector('.ui-dialog-content');
     if (!content) return;
     root.style.height = content.clientHeight + 'px';
+    var contentStyle = window.getComputedStyle(content);
+    var pad = (parseFloat(contentStyle.paddingLeft) || 0) + (parseFloat(contentStyle.paddingRight) || 0);
+    var inner = Math.max(0, content.clientWidth - pad);
+    var pieWidth = pieCardsMinWidth(root);
+    var minWidth = pieWidth ? Math.ceil(dialog.offsetWidth + (pieWidth - inner)) : dialog.offsetWidth;
+    var floor = Math.min(Math.max(minWidth, 0), window.innerWidth - 8);
     var table = root.querySelector('table.portals');
-    if (!table) return;
-    var needed = Math.max(table.offsetWidth || 0, table.scrollWidth || 0);
-    if (!needed) return;
-    var chrome = Math.max(0, dialog.offsetWidth - content.clientWidth);
-    var width = Math.min(window.innerWidth - 8, Math.max(480, Math.ceil(needed + chrome + 16)));
-    if (Math.abs(dialog.offsetWidth - width) <= 2) return;
+    var tableWidth = table ? Math.max(table.offsetWidth || 0, table.scrollWidth || 0) : 0;
+    var width = floor;
+    if (tableWidth) width = Math.max(floor, Math.ceil(dialog.offsetWidth + (tableWidth - inner) + 16));
+    width = Math.min(window.innerWidth - 8, width);
     var $content = window.jQuery && window.jQuery(content);
-    if ($content && $content.data('ui-dialog')) $content.dialog('option', 'width', width);
-    else dialog.style.width = width + 'px';
+    if ($content && $content.data('ui-dialog')) {
+      if ($content.dialog('option', 'minWidth') !== floor) $content.dialog('option', 'minWidth', floor);
+      if (Math.abs(dialog.offsetWidth - width) > 2) $content.dialog('option', 'width', width);
+    } else {
+      dialog.style.minWidth = floor + 'px';
+      if (Math.abs(dialog.offsetWidth - width) > 2) dialog.style.width = width + 'px';
+    }
   }
-  
+
   function isOccupiedPortal(portal) {
     return !!(portal && portal.options && portal.options.team !== window.TEAM_NONE && portal.options.guid);
   }
-  
+
   function occupiedDetailCandidates() {
     return filteredListPortals().filter(function (obj) {
       return isOccupiedPortal(obj && obj.portal);
     });
   }
-  
+
   function portalNeedsDetailRequest(portal) {
     if (!isOccupiedPortal(portal)) return false;
     if (!window.portalDetail || typeof window.portalDetail.isFresh !== 'function') return true;
     return !window.portalDetail.isFresh(portal.options.guid);
   }
-  
+
   function tableContainerReady() {
     var root = document.getElementById('portalslist');
     var container = root && root.querySelector('.table-container');
     return !!(container && container.clientHeight > 0);
   }
-  
+
   function finishDetailLoad(generation) {
     var ns = window.plugin.portalslist;
     if (generation != null && generation !== ns.detailLoadGeneration) return;
@@ -1337,7 +1620,7 @@ function wrapper(plugin_info) {
     if (ns.statsDirty) flushStatsRefresh();
     refreshVisibleDetailRows();
   }
-  
+
   function enqueueVisibleDetailRequests() {
     var ns = window.plugin.portalslist;
     if (!portalsListIsOpen() || !ns.detailRequested) return;
@@ -1361,7 +1644,7 @@ function wrapper(plugin_info) {
       total: queue.length,
     }));
   }
-  
+
   function pumpDetailQueue() {
     var ns = window.plugin.portalslist;
     var generation = ns.detailLoadGeneration;
@@ -1372,7 +1655,7 @@ function wrapper(plugin_info) {
       return;
     }
     ns.detailStreaming = true;
-  
+
     var step = function () {
       if (generation !== ns.detailLoadGeneration || !portalsListIsOpen()) return;
       queue = ns.detailQueue || [];
@@ -1408,7 +1691,7 @@ function wrapper(plugin_info) {
     };
     step();
   }
-  
+
   function scheduleLoadOccupiedPortalDetails() {
     var ns = window.plugin.portalslist;
     ns.detailLoadGeneration = (ns.detailLoadGeneration || 0) + 1;
@@ -1424,7 +1707,7 @@ function wrapper(plugin_info) {
       loadOccupiedPortalDetails(0);
     });
   }
-  
+
   function loadOccupiedPortalDetails(attempt) {
     var ns = window.plugin.portalslist;
     var generation = ns.detailLoadGeneration;
@@ -1438,7 +1721,7 @@ function wrapper(plugin_info) {
       return;
     }
     if (!portalsListIsOpen()) return;
-  
+
     var candidates = occupiedDetailCandidates();
     var cachedGuids = [];
     var needNet = [];
@@ -1454,12 +1737,12 @@ function wrapper(plugin_info) {
       else ns.detailRequested[guid] = true;
     });
     cachedGuids.forEach(repaintDetailGuid);
-  
+
     if (!needNet.length) {
       setDetailStatus('');
       return;
     }
-  
+
     if (!tableContainerReady() && (attempt || 0) < 12) {
       window.requestAnimationFrame(function () {
         if (generation !== ns.detailLoadGeneration) return;
@@ -1467,7 +1750,7 @@ function wrapper(plugin_info) {
       });
       return;
     }
-  
+
     var guids = [];
     needNet.forEach(function (obj) {
       if (isRowInView(obj.row)) guids.push(obj.portal.options.guid);
@@ -1478,7 +1761,7 @@ function wrapper(plugin_info) {
         guids.push(obj.portal.options.guid);
       });
     }
-  
+
     ns.detailQueue = guids;
     ns.detailQueueIndex = 0;
     if (!ns.detailQueue.length) {
@@ -1488,8 +1771,8 @@ function wrapper(plugin_info) {
     }
     pumpDetailQueue();
   }
-  
-  
+
+
   function installPortalsListHelpButton() {
     var root = document.getElementById('portalslist');
     var titlebar = root && root.closest('.ui-dialog') && root.closest('.ui-dialog').querySelector('.ui-dialog-titlebar');
@@ -1508,21 +1791,22 @@ function wrapper(plugin_info) {
       window.dialog({
         title: 'Portals list',
         id: 'portalslist-help',
-        html: '<div class="portalslist-help">' + t('helpBody') + '</div>',
-        width: 460,
+        html: '<div class="portalslist-help">' + helpBodyHtml() + '</div>',
+        width: Math.min(window.innerWidth - 40, 680),
+        height: Math.min(window.innerHeight - 80, 640),
       });
     });
     titlebar.appendChild(help);
   }
-  
+
   window.plugin.portalslist.displayPL = function () {
     var ns = window.plugin.portalslist;
     ns.sortBy = ns.fields.map(function (f) { return f.title; }).indexOf('Level');
     ns.sortOrder = -1;
     ns.filter = 0;
     var list = portalsListBody();
-    var count = filteredListPortals().length;
-  
+    var count = shownPortalCount();
+
     if (window.useAppPanes()) {
       $('<div id="portalslist" class="mobile">').append(list).appendTo(document.body);
     } else {
@@ -1542,7 +1826,7 @@ function wrapper(plugin_info) {
     scheduleLoadOccupiedPortalDetails();
     afterLayout(fitPortalsListLayout);
   };
-  
+
   function portalLevelOf(portal) {
     if (portal.options.team === window.TEAM_NONE) return 0;
     var level = parseInt(portal.options.data && portal.options.data.level != null
@@ -1552,13 +1836,605 @@ function wrapper(plugin_info) {
     if (isNaN(level) || level < 0) return 0;
     return level > maxLevel ? maxLevel : level;
   }
-  
+
   var FILTER_CAPTURED = 6;
   var FILTER_VISITED_ONLY = 8;
   var FILTER_SCOUT = 9;
   var FILTER_UNVISIT = 10;
   var FILTER_UNSCOUT = 11;
   var FILTER_LEVEL_BASE = 20;
+
+  function portalMatchesQuery(portal) {
+    var predicate = window.plugin.portalslist.queryPredicate;
+    if (!predicate) return true;
+    try {
+      return predicate(portal) === true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function shownPortalCount() {
+    var ns = window.plugin.portalslist;
+    var portals = ns.listPortals || [];
+    var filter = ns.filter || 0;
+    var count = 0;
+    for (var i = 0; i < portals.length; i++) {
+      if (portalMatchesFilter(portals[i].portal, filter) && portalMatchesQuery(portals[i].portal)) count++;
+    }
+    return count;
+  }
+
+  function refreshDetailFilter() {
+    var root = document.getElementById('portalslist');
+    var table = root && root.querySelector('table.portals');
+    if (table) placePortalRows(table);
+    updatePortalListTitle();
+  }
+
+  function ensureQueryDetails() {
+    var ns = window.plugin.portalslist;
+    var predicate = ns.queryPredicate;
+    if (!predicate || !predicate.needsDetail) return;
+    if (!window.portalDetail || typeof window.portalDetail.request !== 'function') return;
+    if (!ns.detailRequested) ns.detailRequested = Object.create(null);
+    var queue = ns.detailQueue || (ns.detailQueue = []);
+    var index = ns.detailQueueIndex || 0;
+    var pending = Object.create(null);
+    for (var i = index; i < queue.length; i++) pending[queue[i]] = true;
+    occupiedDetailCandidates().forEach(function (obj) {
+      var guid = obj.portal.options.guid;
+      if (!guid || ns.detailRequested[guid] || pending[guid]) return;
+      if (!portalNeedsDetailRequest(obj.portal)) return;
+      queue.push(guid);
+      pending[guid] = true;
+    });
+    ns.detailQueue = queue;
+    if (index < queue.length && !ns.detailTimer) pumpDetailQueue();
+  }
+
+  function queryError(key) {
+    var err = new Error(t(key));
+    err.query = true;
+    return err;
+  }
+
+  var QUERY_FIELDS = {
+    name: 'name', title: 'name', portal: 'name', '名字': 'name', '名称': 'name',
+    level: 'level', lvl: 'level', lv: 'level', '等级': 'level',
+    team: 'team', faction: 'team', '阵营': 'team',
+    health: 'health', hp: 'health', '血量': 'health',
+    res: 'res', rescount: 'res',
+    shields: 'shields', shield: 'shields', '盾': 'shields',
+    mods: 'mods', mod: 'mods',
+    owner: 'owner', '主人': 'owner',
+    links: 'links', link: 'links', '链接': 'links',
+    fields: 'fields', field: 'fields', '区域': 'fields',
+    ap: 'ap',
+    resonator: 'resonator', resonators: 'resonator',
+    'resonator.owner': 'resonatorOwner',
+    visited: 'visited', visit: 'visited',
+    captured: 'captured', cap: 'captured',
+    scout: 'scout',
+  };
+
+  var QUERY_DETAIL_FIELDS = {
+    shields: 1, mods: 1, owner: 1, resonator: 1, resonatorOwner: 1,
+    visited: 1, captured: 1, scout: 1,
+  };
+
+  function canonicalQueryField(raw) {
+    return QUERY_FIELDS[String(raw).trim().toLowerCase()] || null;
+  }
+
+  function isQueryFlag(field) {
+    return field === 'visited' || field === 'captured' || field === 'scout';
+  }
+
+  function isQueryBreak(ch) {
+    return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' ||
+      ch === '(' || ch === ')' || ch === '=' || ch === '>' || ch === '<' ||
+      ch === '~' || ch === ':' || ch === '"' || ch === '\'';
+  }
+
+  function tokenizeQuery(input) {
+    var tokens = [];
+    var i = 0;
+    while (i < input.length) {
+      var ch = input.charAt(i);
+      if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+        i++;
+        continue;
+      }
+      if (ch === '(' || ch === ')') {
+        tokens.push({ type: ch });
+        i++;
+        continue;
+      }
+      if (ch === '"' || ch === '\'') {
+        var quote = ch;
+        i++;
+        var text = '';
+        while (i < input.length && input.charAt(i) !== quote) {
+          if (input.charAt(i) === '\\' && i + 1 < input.length) {
+            text += input.charAt(i + 1);
+            i += 2;
+            continue;
+          }
+          text += input.charAt(i);
+          i++;
+        }
+        if (i >= input.length) throw queryError('queryValue');
+        i++;
+        tokens.push({ type: 'value', value: text, quoted: true });
+        continue;
+      }
+      if (input.substr(i, 2) === '>=' || input.substr(i, 2) === '<=' || input.substr(i, 2) === '!=') {
+        tokens.push({ type: 'op', value: input.substr(i, 2) });
+        i += 2;
+        continue;
+      }
+      if (ch === '=' || ch === '>' || ch === '<' || ch === '~' || ch === ':') {
+        tokens.push({ type: 'op', value: ch });
+        i++;
+        continue;
+      }
+      if (ch === '-' && (i + 1 >= input.length || /[\s(A-Za-z_\u4e00-\u9fff]/.test(input.charAt(i + 1)))) {
+        tokens.push({ type: 'not' });
+        i++;
+        continue;
+      }
+      var start = i;
+      while (i < input.length && !isQueryBreak(input.charAt(i))) i++;
+      if (start === i) throw queryError('queryIncomplete');
+      tokens.push({ type: 'word', value: input.slice(start, i) });
+    }
+    return tokens;
+  }
+
+  function keywordKind(token) {
+    if (!token) return '';
+    if (token.type === 'not') return 'not';
+    if (token.type !== 'word') return '';
+    var word = token.value.toUpperCase();
+    if (word === 'OR' || token.value === '或') return 'or';
+    if (word === 'AND' || token.value === '且') return 'and';
+    if (word === 'NOT' || token.value === '非') return 'not';
+    return '';
+  }
+
+  function compilePortalQuery(source) {
+    var tokens = tokenizeQuery(source);
+    var pos = 0;
+
+    function peek() { return tokens[pos]; }
+    function take() { return tokens[pos++]; }
+
+    function startsTerm(token) {
+      if (!token || token.type === ')') return false;
+      if (keywordKind(token) === 'or' || keywordKind(token) === 'and') return false;
+      return token.type === '(' || token.type === 'word' || token.type === 'value' || keywordKind(token) === 'not';
+    }
+
+    function parseOr() {
+      var left = parseAnd();
+      while (keywordKind(peek()) === 'or') {
+        take();
+        left = { type: 'or', left: left, right: parseAnd() };
+      }
+      return left;
+    }
+
+    function parseAnd() {
+      var left = parseNot();
+      while (peek()) {
+        if (keywordKind(peek()) === 'or' || peek().type === ')') break;
+        if (keywordKind(peek()) === 'and') {
+          take();
+          left = { type: 'and', left: left, right: parseNot() };
+          continue;
+        }
+        if (!startsTerm(peek())) break;
+        left = { type: 'and', left: left, right: parseNot() };
+      }
+      return left;
+    }
+
+    function parseNot() {
+      if (keywordKind(peek()) === 'not') {
+        take();
+        return { type: 'not', arg: parseNot() };
+      }
+      if (peek() && peek().type === '(') {
+        take();
+        var inner = parseOr();
+        if (!peek() || peek().type !== ')') throw queryError('queryParen');
+        take();
+        return inner;
+      }
+      return parsePredicate();
+    }
+
+    function parsePredicate() {
+      var token = peek();
+      if (!token || (token.type !== 'word' && token.type !== 'value')) throw queryError('queryIncomplete');
+      if (keywordKind(token) === 'and' || keywordKind(token) === 'or') throw queryError('queryIncomplete');
+      if (token.type === 'value') {
+        take();
+        return { type: 'name', op: '~', value: token.value };
+      }
+      var field = canonicalQueryField(token.value);
+      var ahead = tokens[pos + 1];
+      var aheadIsOp = ahead && (ahead.type === 'op' || (ahead.type === 'word' && ahead.value.toUpperCase() === 'HAS'));
+      if (field && aheadIsOp) {
+        take();
+        return parseComparison(field);
+      }
+      if (field && isQueryFlag(field)) {
+        take();
+        return { type: 'flag', field: field };
+      }
+      take();
+      return { type: 'name', op: '~', value: token.value };
+    }
+
+    function parseComparison(field) {
+      var opToken = take();
+      var op = opToken.type === 'word' ? 'has' : opToken.value;
+      if (op === ':') {
+        var nextToken = peek();
+        if (nextToken && nextToken.type === 'op' && nextToken.value !== ':') op = take().value;
+        else op = defaultQueryOp(field);
+      }
+      var valueToken = peek();
+      if (!valueToken || (valueToken.type !== 'word' && valueToken.type !== 'value')) throw queryError('queryValue');
+      take();
+      var range = !valueToken.quoted && parseQueryRange(valueToken.value);
+      if (range) {
+        if (!(isQueryNumeric(field) && op === '=')) throw queryError('queryOp');
+        op = 'range';
+      }
+      validateQueryOp(field, op);
+      var node = {
+        type: 'cmp',
+        field: field,
+        op: op,
+        value: range || valueToken.value,
+        quoted: !!valueToken.quoted,
+      };
+      if (field === 'team') {
+        var team = canonicalTeam(valueToken.value);
+        if (!team) throw queryError('queryTeam');
+        node.team = team;
+      }
+      if (isQueryFlag(field)) {
+        var flagValue = parseQueryBool(valueToken.value);
+        if (flagValue == null) throw queryError('queryValue');
+        node.flag = flagValue;
+      }
+      return node;
+    }
+
+    var ast = parseOr();
+    if (peek()) throw queryError('queryTail');
+    var predicate = function (portal) {
+      return evalQuery(ast, portal) === true;
+    };
+    predicate.needsDetail = queryNodeNeedsDetail(ast);
+    return predicate;
+  }
+
+  function defaultQueryOp(field) {
+    if (field === 'name' || field === 'owner' || field === 'resonatorOwner') return '~';
+    if (field === 'mods') return 'has';
+    return '=';
+  }
+
+  function isQueryNumeric(field) {
+    return field === 'level' || field === 'health' || field === 'res' || field === 'shields' ||
+      field === 'links' || field === 'fields' || field === 'ap' || field === 'mods' || field === 'resonator';
+  }
+
+  function validateQueryOp(field, op) {
+    var numeric = { '=': 1, '!=': 1, '>': 1, '>=': 1, '<': 1, '<=': 1, range: 1 };
+    var text = { '=': 1, '!=': 1, '~': 1 };
+    if (field === 'name' || field === 'owner' || field === 'resonatorOwner') {
+      if (!text[op]) throw queryError('queryOp');
+      return;
+    }
+    if (field === 'team' || isQueryFlag(field)) {
+      if (op !== '=' && op !== '!=') throw queryError('queryOp');
+      return;
+    }
+    if (field === 'mods' || field === 'resonator') {
+      if (op !== 'has' && !numeric[op]) throw queryError('queryOp');
+      return;
+    }
+    if (!numeric[op]) throw queryError('queryOp');
+  }
+
+  function parseQueryRange(value) {
+    var match = /^(-?\d+(?:\.\d+)?)\.\.(-?\d+(?:\.\d+)?)$/.exec(String(value));
+    if (!match) return null;
+    return [Number(match[1]), Number(match[2])];
+  }
+
+  function parseQueryNumber(value) {
+    if (typeof value === 'number') return value;
+    if (!/^-?\d+(?:\.\d+)?$/.test(String(value))) return null;
+    return Number(value);
+  }
+
+  function parseQueryBool(value) {
+    var key = String(value).trim().toLowerCase();
+    if (key === 'true' || key === 'yes' || key === '1' || key === '是') return true;
+    if (key === 'false' || key === 'no' || key === '0' || key === '否') return false;
+    return null;
+  }
+
+  function canonicalTeam(value) {
+    var key = String(value).trim().toLowerCase();
+    var map = {
+      enl: 'enl', e: 'enl', enlightened: 'enl', green: 'enl', '绿': 'enl', '启蒙': 'enl',
+      res: 'res', r: 'res', resistance: 'res', blue: 'res', '蓝': 'res', '抵抗': 'res',
+      neu: 'neu', n: 'neu', neutral: 'neu', none: 'neu', '白': 'neu', '中立': 'neu', '灰': 'neu',
+      mac: 'mac', machina: 'mac', '红': 'mac',
+      friendly: 'friendly', '友方': 'friendly', '我方': 'friendly',
+      enemy: 'enemy', '敌方': 'enemy',
+    };
+    return map[key] || null;
+  }
+
+  function queryNodeNeedsDetail(node) {
+    if (!node) return false;
+    if (node.type === 'cmp' || node.type === 'flag') return !!QUERY_DETAIL_FIELDS[node.field];
+    if (node.type === 'not') return queryNodeNeedsDetail(node.arg);
+    if (node.type === 'and' || node.type === 'or') {
+      return queryNodeNeedsDetail(node.left) || queryNodeNeedsDetail(node.right);
+    }
+    return false;
+  }
+
+  function evalQuery(node, portal) {
+    if (node.type === 'or') return evalQueryOr(evalQuery(node.left, portal), evalQuery(node.right, portal));
+    if (node.type === 'and') return evalQueryAnd(evalQuery(node.left, portal), evalQuery(node.right, portal));
+    if (node.type === 'not') return evalQueryNot(evalQuery(node.arg, portal));
+    if (node.type === 'name') return cmpQueryString(queryPortalName(portal), node.op, node.value);
+    if (node.type === 'flag') {
+      var flag = evalQueryFlag(portal, node.field);
+      if (flag === 'unknown') return 'unknown';
+      return flag === true;
+    }
+    return evalQueryCmp(node, portal);
+  }
+
+  function evalQueryOr(left, right) {
+    if (left === true || right === true) return true;
+    if (left === false && right === false) return false;
+    return 'unknown';
+  }
+
+  function evalQueryAnd(left, right) {
+    if (left === false || right === false) return false;
+    if (left === true && right === true) return true;
+    return 'unknown';
+  }
+
+  function evalQueryNot(value) {
+    if (value === 'unknown') return 'unknown';
+    return !value;
+  }
+
+  function queryPortalData(portal) {
+    return (portal && portal.options && portal.options.data) || {};
+  }
+
+  function queryPortalName(portal) {
+    var title = queryPortalData(portal).title;
+    return title == null ? '' : String(title);
+  }
+
+  function queryKnownNumber(value) {
+    if (value == null || value === '') return null;
+    var number = Number(value);
+    return isNaN(number) ? null : number;
+  }
+
+  function queryPlayerName() {
+    return window.PLAYER && window.PLAYER.nickname ? String(window.PLAYER.nickname) : '';
+  }
+
+  function queryPlayerTeam() {
+    if (!window.PLAYER || typeof window.teamStringToId !== 'function') return null;
+    var team = window.teamStringToId(window.PLAYER.team);
+    return team == null ? null : team;
+  }
+
+  function queryTeamId(token) {
+    if (token === 'enl') return window.TEAM_ENL != null ? window.TEAM_ENL : 2;
+    if (token === 'res') return window.TEAM_RES != null ? window.TEAM_RES : 1;
+    if (token === 'neu') return window.TEAM_NONE != null ? window.TEAM_NONE : 0;
+    if (token === 'mac') return window.TEAM_MAC != null ? window.TEAM_MAC : null;
+    return null;
+  }
+
+  function queryResolveText(value, quoted) {
+    if (!quoted && String(value).toLowerCase() === 'me') return queryPlayerName();
+    return String(value);
+  }
+
+  function cmpQueryString(actual, op, expected) {
+    var left = String(actual == null ? '' : actual).toLowerCase();
+    var right = String(expected == null ? '' : expected).toLowerCase();
+    if (op === '=' ) return left === right;
+    if (op === '!=') return left !== right;
+    if (op === '~') return left.indexOf(right) >= 0;
+    return false;
+  }
+
+  function cmpQueryNumber(actual, op, expected) {
+    if (actual == null) return 'unknown';
+    if (op === 'range') {
+      var low = expected[0];
+      var high = expected[1];
+      if (low > high) {
+        var swap = low;
+        low = high;
+        high = swap;
+      }
+      return actual >= low && actual <= high;
+    }
+    var number = parseQueryNumber(expected);
+    if (number == null) return false;
+    if (op === '=') return actual === number;
+    if (op === '!=') return actual !== number;
+    if (op === '>') return actual > number;
+    if (op === '>=') return actual >= number;
+    if (op === '<') return actual < number;
+    if (op === '<=') return actual <= number;
+    return false;
+  }
+
+  function queryMods(portal) {
+    var mods = queryPortalData(portal).mods;
+    if (!mods) return null;
+    return mods.filter(Boolean);
+  }
+
+  function queryResonators(portal) {
+    var list = queryPortalData(portal).resonators;
+    if (!list) return null;
+    return list.filter(function (reso) { return reso && reso.level; });
+  }
+
+  function queryOwner(portal) {
+    var data = queryPortalData(portal);
+    if (!data.resonators && !data.mods && (data.owner === undefined || data.owner === null)) return null;
+    return data.owner || '';
+  }
+
+  function modMatchesNeedle(mod, needle) {
+    var wanted = String(needle).toLowerCase();
+    if (!wanted) return false;
+    var label = modLabel(mod).toLowerCase();
+    var name = String(mod.name || '').toLowerCase();
+    var rarity = String(mod.rarity || '').toLowerCase().replace(/_/g, ' ');
+    return label.indexOf(wanted) >= 0 || name.indexOf(wanted) >= 0 || rarity.indexOf(wanted) >= 0;
+  }
+
+  function evalQueryFlag(portal, field) {
+    var history = queryPortalData(portal).history;
+    if (!history) return 'unknown';
+    if (field === 'captured') return !!history.captured;
+    if (field === 'scout') return !!history.scoutControlled;
+    return !!(history.visited || history.captured);
+  }
+
+  function evalQueryTeam(portal, node) {
+    var team = portal.options.team;
+    var token = node.team;
+    var matches;
+    if (token === 'friendly' || token === 'enemy') {
+      var mine = queryPlayerTeam();
+      if (mine == null) return 'unknown';
+      if (token === 'friendly') matches = team === mine;
+      else matches = team !== window.TEAM_NONE && team !== mine;
+    } else {
+      var id = queryTeamId(token);
+      if (id == null) return false;
+      matches = team === id;
+    }
+    return node.op === '!=' ? !matches : matches;
+  }
+
+  function evalQueryCmp(node, portal) {
+    var field = node.field;
+    var data = queryPortalData(portal);
+    if (field === 'level') return cmpQueryNumber(portalLevelOf(portal), node.op, node.value);
+    if (field === 'team') return evalQueryTeam(portal, node);
+    if (field === 'health') return cmpQueryNumber(queryKnownNumber(data.health), node.op, node.value);
+    if (field === 'res') return cmpQueryNumber(queryKnownNumber(data.resCount), node.op, node.value);
+    if (field === 'links') return cmpQueryNumber(queryLinkCount(portal), node.op, node.value);
+    if (field === 'fields') return cmpQueryNumber(queryFieldCount(portal), node.op, node.value);
+    if (field === 'ap') return cmpQueryNumber(queryEnemyAp(portal), node.op, node.value);
+    if (field === 'shields') {
+      var mods = queryMods(portal);
+      if (!mods) return 'unknown';
+      return cmpQueryNumber(shieldMitigationTotal(mods), node.op, node.value);
+    }
+    if (field === 'owner') {
+      var owner = queryOwner(portal);
+      if (owner == null) return 'unknown';
+      return cmpQueryString(owner, node.op, queryResolveText(node.value, node.quoted));
+    }
+    if (field === 'name') return cmpQueryString(queryPortalName(portal), node.op, queryResolveText(node.value, node.quoted));
+    if (field === 'mods') return evalQueryMods(portal, node);
+    if (field === 'resonator') return evalQueryResonators(portal, node);
+    if (field === 'resonatorOwner') return evalQueryResonatorOwners(portal, node);
+    if (isQueryFlag(field)) {
+      var flag = evalQueryFlag(portal, field);
+      if (flag === 'unknown') return 'unknown';
+      var wanted = node.flag === true;
+      var match = flag === wanted;
+      return node.op === '!=' ? !match : match;
+    }
+    return false;
+  }
+
+  function evalQueryMods(portal, node) {
+    var mods = queryMods(portal);
+    if (!mods) return 'unknown';
+    if (node.op === 'has') return mods.some(function (mod) { return modMatchesNeedle(mod, node.value); });
+    return cmpQueryNumber(mods.length, node.op, node.value);
+  }
+
+  function evalQueryResonators(portal, node) {
+    var list = queryResonators(portal);
+    if (!list) return 'unknown';
+    if (!list.length) return false;
+    if (node.op === 'has' || node.op === '=') {
+      var level = parseQueryNumber(node.value);
+      if (level == null) return false;
+      return list.some(function (reso) { return Number(reso.level) === level; });
+    }
+    var found = false;
+    for (var i = 0; i < list.length; i++) {
+      if (cmpQueryNumber(Number(list[i].level) || 0, node.op, node.value) === true) found = true;
+    }
+    return found;
+  }
+
+  function evalQueryResonatorOwners(portal, node) {
+    var list = queryPortalData(portal).resonators;
+    if (!list) return 'unknown';
+    var needle = queryResolveText(node.value, node.quoted);
+    var found = false;
+    list.filter(Boolean).forEach(function (reso) {
+      if (cmpQueryString(reso.owner || '', node.op, needle)) found = true;
+    });
+    return found;
+  }
+
+  function queryLinkCount(portal) {
+    if (!portal || !portal.options || typeof window.getPortalLinks !== 'function') return null;
+    var links = portalLinks(portal.options.guid);
+    if (!links) return 0;
+    return (links.in ? links.in.length : 0) + (links.out ? links.out.length : 0);
+  }
+
+  function queryFieldCount(portal) {
+    if (!portal || !portal.options || typeof window.getPortalFieldsCount !== 'function') return null;
+    var count = portalFieldCount(portal.options.guid);
+    return count == null ? 0 : count;
+  }
+
+  function queryEnemyAp(portal) {
+    var resCount = queryKnownNumber(queryPortalData(portal).resCount);
+    var links = queryLinkCount(portal);
+    var fields = queryFieldCount(portal);
+    if (resCount == null || links == null || fields == null) return null;
+    return window.plugin.portalslist.portalApGainMaths(resCount, links, fields).enemyAp;
+  }
 
   function portalMatchesFilter(portal, filter) {
     if (!filter) return true;
@@ -1575,7 +2451,7 @@ function wrapper(plugin_info) {
     if (filter === FILTER_UNSCOUT) return !history.scoutControlled;
     return false;
   }
-  
+
   function filteredListPortals() {
     var ns = window.plugin.portalslist;
     var portals = ns.listPortals || [];
@@ -1615,7 +2491,7 @@ function wrapper(plugin_info) {
       angle += sweep;
     });
   }
-  
+
   function drawPieCanvas(canvas, layers) {
     var ctx = canvas.getContext('2d');
     var w = canvas.width;
@@ -1671,7 +2547,7 @@ function wrapper(plugin_info) {
     canvas.style.height = size + 'px';
     return canvas;
   }
-  
+
   function pieCard(title, slices, outerSlices) {
     var card = el('div', 'stats-pie');
     card.appendChild(el('div', 'stats-pie-title', title));
@@ -1707,7 +2583,7 @@ function wrapper(plugin_info) {
     card.appendChild(body);
     return card;
   }
-  
+
   function statsPies(portals) {
     var wrap = document.createElement('div');
     wrap.className = 'stats-pies';
@@ -1776,33 +2652,34 @@ function wrapper(plugin_info) {
     wrap.appendChild(pieCard(t('levelPie'), levelSlices));
     return wrap;
   }
-  
+
   function refreshStatsPanels() {
     var root = document.getElementById('portalslist');
     if (!root) return;
     var portals = filteredListPortals();
     var pies = root.querySelector('.stats-pies');
     if (pies && pies.parentNode) pies.parentNode.replaceChild(statsPies(portals), pies);
+    scheduleFitLayout();
   }
-  
+
   function sectionTitle(text) {
     return el('div', 'section-title', text);
   }
-  
+
   function portalTable(sortBy, sortOrder, filter) {
     var ns = window.plugin.portalslist;
     ns.sortBy = sortBy;
     ns.sortOrder = sortOrder;
     ns.filter = filter;
     sortListPortals();
-  
+
     var tableDiv = document.createElement('div');
     tableDiv.className = 'table-container';
     tableDiv.addEventListener('scroll', onDetailScroll);
     var table = document.createElement('table');
     table.className = 'portals';
     tableDiv.appendChild(table);
-  
+
     var headRow = table.appendChild(document.createElement('thead')).insertRow(-1);
     var selectHead = headRow.appendChild(document.createElement('th'));
     selectHead.className = 'col-select';
@@ -1828,13 +2705,13 @@ function wrapper(plugin_info) {
         });
       }
     });
-  
+
     placePortalRows(table);
     updateSortHeaders(table);
     return listShell(filteredListPortals(), tableDiv);
   }
   window.plugin.portalslist.portalTable = portalTable;
-  
+
   window.plugin.portalslist.getPortalLink = function (portal) {
     var coord = portal.getLatLng();
     var link = document.createElement('a');
@@ -1853,27 +2730,28 @@ function wrapper(plugin_info) {
     });
     return link;
   };
-  
+
   window.plugin.portalslist.onPaneChanged = function (pane) {
     if (pane === 'plugin-portalslist') window.plugin.portalslist.displayPL();
     else $('#portalslist').remove();
   };
-  
+
   var setup = function () {
     window.plugin.portalslist.FACTION_ABBREVS = window.TEAM_NAMES.map(abbreviate);
-  
+
     window.plugin.portalslist.listPortals = [];
     window.plugin.portalslist.byGuid = Object.create(null);
     window.plugin.portalslist.sortBy = 1; // second column: level
     window.plugin.portalslist.sortOrder = -1;
     window.plugin.portalslist.filter = 0;
     window.plugin.portalslist.onlyInPolygons = false;
-  
+    if (window.plugin.portalslist.queryText == null) window.plugin.portalslist.queryText = '';
+
     if (!window.plugin.portalslist.detailHook && window.addHook) {
       window.plugin.portalslist.detailHook = onPortalDetailLoaded;
       window.addHook('portalDetailLoaded', window.plugin.portalslist.detailHook);
     }
-  
+
     if (window.useAppPanes()) {
       window.app.addPane('plugin-portalslist', 'Portals list', 'ic_action_paste');
       window.addHook('paneChanged', window.plugin.portalslist.onPaneChanged);
@@ -1885,7 +2763,7 @@ function wrapper(plugin_info) {
         accesskey: 't',
       });
     }
-  
+
     $('<style>').prop('type', 'text/css').html('\
   #portalslist.mobile {\
     background: transparent;\
@@ -1920,15 +2798,17 @@ function wrapper(plugin_info) {
   \
   #portalslist .stats-pies {\
     display: flex;\
-    flex-wrap: wrap;\
-    align-items: flex-start;\
+    flex-wrap: nowrap;\
+    align-items: stretch;\
     gap: 12px 20px;\
     margin: 4px 0 6px;\
   }\
   \
   #portalslist .stats-pie {\
-    flex: 1 1 240px;\
-    min-width: 220px;\
+    display: flex;\
+    flex-direction: column;\
+    flex: 1 1 auto;\
+    min-width: max-content;\
   }\
   \
   #portalslist .stats-pie-title {\
@@ -1940,6 +2820,7 @@ function wrapper(plugin_info) {
   \
   #portalslist .stats-pie-body {\
     display: flex;\
+    flex: 1 1 auto;\
     flex-direction: row;\
     align-items: center;\
     gap: 10px;\
@@ -1956,7 +2837,7 @@ function wrapper(plugin_info) {
     align-items: stretch;\
     gap: 8px;\
     flex: 1 1 auto;\
-    min-width: 0;\
+    min-width: max-content;\
   }\
   \
   #portalslist .stats-legend {\
@@ -1968,7 +2849,7 @@ function wrapper(plugin_info) {
     margin: 0;\
     padding: 0;\
     flex: 1 1 auto;\
-    min-width: 0;\
+    min-width: max-content;\
   }\
   \
   #portalslist .stats-legend li {\
@@ -1985,9 +2866,9 @@ function wrapper(plugin_info) {
   }\
   \
   #portalslist .stats-legend-label {\
-    min-width: 0;\
-    overflow: hidden;\
-    text-overflow: ellipsis;\
+    min-width: max-content;\
+    overflow: visible;\
+    text-overflow: clip;\
   }\
   \
   #portalslist .stats-legend-value {\
@@ -2146,6 +3027,31 @@ function wrapper(plugin_info) {
     background: #25557a;\
   }\
   \
+  #portalslist .portal-query {\
+    display: inline-flex;\
+    align-items: center;\
+    gap: 6px;\
+    flex: 1 1 240px;\
+    min-width: 0;\
+  }\
+  \
+  #portalslist .portal-query-input {\
+    flex: 1 1 180px;\
+    width: 220px;\
+    min-width: 120px;\
+    padding: 4px 8px;\
+    border: 1px solid #0b314e;\
+    background: #0d2c42;\
+    color: #fff;\
+    font: inherit;\
+  }\
+  \
+  #portalslist .portal-query-input.query-error {\
+    color: #ff4d4d;\
+    border-color: #ff4d4d;\
+    box-shadow: inset 0 0 0 1px #ff4d4d;\
+  }\
+  \
   .ui-dialog.ui-dialog-portalslist-csv .ui-dialog-content {\
     overflow: hidden !important;\
     box-sizing: border-box;\
@@ -2265,9 +3171,30 @@ function wrapper(plugin_info) {
     flex-direction: column;\
     box-sizing: border-box;\
   }\
+  \
+  .portalslist-help h3 {\
+    margin: 14px 0 6px;\
+    color: #FFCE00;\
+    font-size: 15px;\
+  }\
+  \
+  .portalslist-help p,\
+  .portalslist-help li {\
+    margin: 4px 0;\
+  }\
+  \
+  .portalslist-help ul {\
+    margin: 4px 0 8px;\
+    padding-left: 1.2em;\
+  }\
+  \
+  .portalslist-help code {\
+    font-family: Menlo, Consolas, monospace;\
+    font-size: 12px;\
+  }\
   ').appendTo('head');
   };
-  
+
   window.plugin.portalslist.portalApGainMaths = function (resCount, linkCount, fieldCount) {
     var deployAp = (8 - resCount) * window.DEPLOY_RESONATOR;
     if (resCount === 0) deployAp += window.CAPTURE_PORTAL;
@@ -2284,7 +3211,6 @@ function wrapper(plugin_info) {
       captureAp: captureAp,
     };
   };
-  
   setup.info = plugin_info; //add the script info data to the function as a property
   if (typeof changelog !== 'undefined') setup.info.changelog = changelog;
   if(!window.bootPlugins) window.bootPlugins = [];

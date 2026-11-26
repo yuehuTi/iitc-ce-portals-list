@@ -2,6 +2,18 @@
 
 IITC plugin: Portals list
 
+## 0.5.49
+
+- Document query operators, factions, lists and flags in the help dialog
+
+## 0.5.48
+
+- Keep the window at least wide enough for three pies and their legends, and keep the action bar in place when the list is empty
+
+## 0.5.47
+
+- Filter the detail list with a boolean query beside Export CSV
+
 ## 0.5.46
 
 - Fetch full portal details for all selected portals before CSV export

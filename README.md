@@ -1,9 +1,25 @@
-<img width="1280" height="971" alt="图片" src="https://github.com/user-attachments/assets/a24ae2a4-9275-4eb7-ba63-78fe2f957644" />
-<img width="1280" height="945" alt="图片" src="https://github.com/user-attachments/assets/eb1aa355-49ec-4691-bb6a-ad5fb2021140" />
+# IITC-CE source form of Portals list
 
-整合了原作者及其他插件的若干功能：<br/>
-增加了按阵营、cap/visit、scout、portal等级统计的饼图<br/>
-增加了只统计polygons内的portal<br/>
-增加了portal详细信息表格的内容：cap、visit、scout、owner、mod等列<br/>
-增加了批量bookmark、marker、导出csv<br/>
-可点击饼图图例/详细列表表头里的阵营、cap、visit、scout、等级等过滤详细信息<br/>
+Converted from the Tampermonkey userscript for a PR against
+[IITC-CE/ingress-intel-total-conversion](https://github.com/IITC-CE/ingress-intel-total-conversion).
+
+## Files
+
+- `portals-list.js` → copy to `plugins/portals-list.js`
+- `portals-list.css` → copy to `plugins/portals-list.css`
+
+## Build
+
+From an IITC-CE checkout:
+
+```bash
+python3 build_plugin.py release plugins/portals-list.js --out-dir /tmp/iitc-out
+```
+
+Install `/tmp/iitc-out/portals-list.user.js` to verify.
+
+## Notes
+
+- Wrapper / `==UserScript==` extras / `bootPlugins` inject are omitted (added by the build).
+- CSS is loaded via `@include_string:portals-list.css@`.
+- This is a large update over upstream `0.4.6`; expect review discussion.
