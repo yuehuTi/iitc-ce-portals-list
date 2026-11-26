@@ -6,4 +6,4 @@
 增加了只统计polygons内的portal<br/>
 增加了portal详细信息表格的内容：cap、visit、scout、owner、mod等列<br/>
 增加了批量bookmark、marker、导出csv<br/>
-可点击阵营、cap、visit、scout、等级过滤详细信息<br/>
+可点击饼图图例/详细列表表头里的阵营、cap、visit、scout、等级等过滤详细信息<br/>
