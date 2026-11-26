@@ -7,8 +7,8 @@
 // @description    Show faction statistics and a sortable portal list for the current view.
 // @id             portals-list
 // @namespace      https://github.com/IITC-CE/ingress-intel-total-conversion
-// @updateURL      https://iitc.app/build/release/plugins/portals-list.meta.js
-// @downloadURL    https://iitc.app/build/release/plugins/portals-list.user.js
+// @updateURL      https://github.com/yuehuTi/iitc-plugins/raw/refs/heads/master/portals-list.meta.js
+// @downloadURL    https://github.com/yuehuTi/iitc-plugins/raw/refs/heads/master/portals-list.user.js
 // @match          https://intel.ingress.com/*
 // @match          https://intel-x.ingress.com/*
 // @icon           https://iitc.app/extras/plugin-icons/portals-list.svg
