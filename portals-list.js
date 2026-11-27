@@ -2,13 +2,17 @@
 // @modifier       Takurua(@yuehuTi)
 // @name           Portals list
 // @category       Info
-// @version        0.5.49
+// @version        0.5.50
 // @description    Show faction statistics and a sortable portal list for the current view.
 
 /* exported setup, changelog --eslint */
 /* global IITC -- eslint */
 
 var changelog = [
+  {
+    version: '0.5.50',
+    changes: ['Label mod chips with rarity and type short names'],
+  },
   {
     version: '0.5.49',
     changes: ['Document query operators, factions, lists and flags in the help dialog'],
@@ -44,10 +48,6 @@ var changelog = [
   {
     version: '0.5.41',
     changes: ['Keep Portals list entry, Visit/Cap·Scout pie title, table and CSV headers in English'],
-  },
-  {
-    version: '0.5.40',
-    changes: ['Localize buttons, titles and UI copy for Chinese or English system language'],
   },
 ];
 
@@ -186,7 +186,7 @@ function helpBodyHtml() {
       '<p>例如 <code>team = ENL</code>、<code>team = friendly</code>、<code>阵营 != 中立</code>。</p>',
       '<h3>列表</h3>',
       '<ul>',
-      '<li><code>mods</code> / <code>mod</code>：<code>has</code> 按短名、插件名或稀有度匹配，不区分大小写。短名包括 <code>FA</code>、<code>Turret</code>、<code>HS</code>、<code>MH</code>、<code>SBUL</code>、<code>UL</code>、<code>LA</code>、<code>ITO</code>、<code>Aegis</code>，以及盾的 <code>C</code> / <code>R</code> / <code>VR</code> 加减伤。例如 <code>mods has VR</code>、<code>mods has shield</code>。</li>',
+      '<li><code>mods</code> / <code>mod</code>：<code>has</code> 按短名、插件名或稀有度匹配，不区分大小写。短名包括 <code>CS</code> / <code>RS</code> / <code>VRS</code>、<code>Aegis</code>、<code>CMH</code> / <code>RMH</code> / <code>VRMH</code>、<code>CHS</code> / <code>RHS</code> / <code>VRHS</code>、<code>LA</code> / <code>VRLA</code>、<code>Turret</code>、<code>FA</code>、<code>SBUL</code>、<code>ITON-</code>、<code>ITON+</code>。例如 <code>mods has VRS</code>、<code>mods has MH</code>、<code>mods has shield</code>。</li>',
       '<li><code>mods &gt;= 2</code> 比较的是插件个数，不是等级。</li>',
       '<li><code>resonator</code> / <code>resonators</code>：比较的是任意一个共振器的等级。<code>resonator &gt;= 7</code> 表示至少有一个 7 级或以上。<code>resonator = 8</code> 和 <code>resonator has 8</code> 表示有 8 级共振器。</li>',
       '<li><code>resonator.owner</code>：任意一个共振器的主人，可用 <code>=</code>、<code>!=</code>、<code>~</code> 和 <code>me</code>。例如 <code>resonator.owner = me</code>。</li>',
@@ -243,7 +243,7 @@ function helpBodyHtml() {
     '<p>Examples: <code>team = ENL</code>, <code>team = friendly</code>, <code>team != NEU</code>.</p>',
     '<h3>Lists</h3>',
     '<ul>',
-    '<li><code>mods</code> / <code>mod</code>: <code>has</code> matches the short label, mod name, or rarity, ignoring case. Short labels include <code>FA</code>, <code>Turret</code>, <code>HS</code>, <code>MH</code>, <code>SBUL</code>, <code>UL</code>, <code>LA</code>, <code>ITO</code>, <code>Aegis</code>, and shield labels <code>C</code> / <code>R</code> / <code>VR</code> plus mitigation. Examples: <code>mods has VR</code>, <code>mods has shield</code>.</li>',
+    '<li><code>mods</code> / <code>mod</code>: <code>has</code> matches the short label, mod name, or rarity, ignoring case. Short labels include <code>CS</code> / <code>RS</code> / <code>VRS</code>, <code>Aegis</code>, <code>CMH</code> / <code>RMH</code> / <code>VRMH</code>, <code>CHS</code> / <code>RHS</code> / <code>VRHS</code>, <code>LA</code> / <code>VRLA</code>, <code>Turret</code>, <code>FA</code>, <code>SBUL</code>, <code>ITON-</code>, and <code>ITON+</code>. Examples: <code>mods has VRS</code>, <code>mods has MH</code>, <code>mods has shield</code>.</li>',
     '<li><code>mods &gt;= 2</code> compares how many mods are installed, not their level.</li>',
     '<li><code>resonator</code> / <code>resonators</code>: the comparison applies to any one resonator level. <code>resonator &gt;= 7</code> means at least one resonator is level 7 or higher. <code>resonator = 8</code> and <code>resonator has 8</code> mean an R8 is present.</li>',
     '<li><code>resonator.owner</code>: any resonator owner, with <code>=</code>, <code>!=</code>, <code>~</code>, and <code>me</code>. Example: <code>resonator.owner = me</code>.</li>',
@@ -769,27 +769,41 @@ function isShieldMod(mod) {
   return /shield/i.test(mod.name || '');
 }
 
-function shieldLabel(mod) {
-  var mit = mod.stats && mod.stats.MITIGATION ? String(mod.stats.MITIGATION) : '';
-  if (/aegis/i.test(mod.name || '')) return 'Aegis' + mit;
+function rarityPrefix(mod) {
   var rarity = mod.rarity || '';
-  var prefix = rarity === 'VERY_RARE' ? 'VR' : rarity === 'RARE' ? 'R' : rarity === 'COMMON' ? 'C' : '';
-  return prefix + mit || mod.name || '?';
+  if (rarity === 'VERY_RARE') return 'VR';
+  if (rarity === 'RARE') return 'R';
+  if (rarity === 'COMMON') return 'C';
+  return '';
+}
+
+function shieldLabel(mod) {
+  if (/aegis/i.test(mod.name || '')) return 'Aegis';
+  var prefix = rarityPrefix(mod);
+  return prefix ? prefix + 'S' : (mod.name || '?');
+}
+
+function itoLabel(name) {
+  if (name.indexOf('transmuter') < 0 && name.indexOf('ito') < 0) return '';
+  if (name.indexOf('attack') >= 0) return 'ITON-';
+  if (name.indexOf('defense') >= 0 || name.indexOf('defence') >= 0) return 'ITON+';
+  if (name.indexOf('+') >= 0) return 'ITON+';
+  if (name.indexOf('-') >= 0 || name.indexOf('−') >= 0 || name.indexOf('–') >= 0) return 'ITON-';
+  return '';
 }
 
 function modLabel(mod) {
   if (isShieldMod(mod)) return shieldLabel(mod);
   var name = (mod.name || '').toLowerCase();
+  var prefix = rarityPrefix(mod);
   if (name.indexOf('force amp') >= 0) return 'FA';
   if (name.indexOf('turret') >= 0) return 'Turret';
-  if (name.indexOf('heat sink') >= 0) return 'HS';
-  if (name.indexOf('multi') >= 0) return 'MH';
+  if (name.indexOf('heat sink') >= 0) return prefix + 'HS';
+  if (name.indexOf('multi') >= 0) return prefix + 'MH';
   if (name.indexOf('softbank') >= 0) return 'SBUL';
-  if (name.indexOf('ultra') >= 0 && name.indexOf('link') >= 0) return 'UL';
-  if (name.indexOf('link amp') >= 0) return 'LA';
-  if (name.indexOf('transmuter') >= 0 && name.indexOf('attack') >= 0) return '-ATK';
-  if (name.indexOf('transmuter') >= 0 && name.indexOf('defense') >= 0) return '+DEF';
-  if (name.indexOf('ito') >= 0) return 'ITO';
+  if (name.indexOf('link amp') >= 0) return prefix === 'VR' ? 'VRLA' : 'LA';
+  var ito = itoLabel(name);
+  if (ito) return ito;
   return mod.name || '?';
 }
 

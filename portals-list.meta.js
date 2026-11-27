@@ -3,7 +3,7 @@
 // @modifier       Takurua(@yuehuTi)
 // @name           IITC plugin: Portals list
 // @category       Info
-// @version        0.5.49
+// @version        0.5.50
 // @description    Show faction statistics and a sortable portal list for the current view.
 // @id             portals-list
 // @namespace      https://github.com/IITC-CE/ingress-intel-total-conversion

@@ -2,6 +2,10 @@
 
 IITC plugin: Portals list
 
+## 0.5.50
+
+- Label mod chips with rarity and type short names
+
 ## 0.5.49
 
 - Document query operators, factions, lists and flags in the help dialog
