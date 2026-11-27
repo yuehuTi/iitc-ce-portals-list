@@ -2,6 +2,10 @@
 
 IITC plugin: Portals list
 
+## 0.5.51
+
+- Collapse the Visit/Cap·Scout pie to the clicked legend, matching the other pies
+
 ## 0.5.50
 
 - Label mod chips with rarity and type short names

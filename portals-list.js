@@ -2,13 +2,17 @@
 // @modifier       Takurua(@yuehuTi)
 // @name           Portals list
 // @category       Info
-// @version        0.5.50
+// @version        0.5.51
 // @description    Show faction statistics and a sortable portal list for the current view.
 
 /* exported setup, changelog --eslint */
 /* global IITC -- eslint */
 
 var changelog = [
+  {
+    version: '0.5.51',
+    changes: ['Collapse the Visit/Cap·Scout pie to the clicked legend, matching the other pies'],
+  },
   {
     version: '0.5.50',
     changes: ['Label mod chips with rarity and type short names'],
@@ -44,10 +48,6 @@ var changelog = [
   {
     version: '0.5.42',
     changes: ['Keep Cap/Visit/Un visit/Scout/Un scout labels in English'],
-  },
-  {
-    version: '0.5.41',
-    changes: ['Keep Portals list entry, Visit/Cap·Scout pie title, table and CSV headers in English'],
   },
 ];
 
@@ -2541,7 +2541,21 @@ function makePieCanvas(size) {
   return canvas;
 }
 
+function sliceForActiveFilter(slices) {
+  var filter = window.plugin.portalslist.filter || 0;
+  if (!filter || !slices) return null;
+  for (var i = 0; i < slices.length; i++) {
+    if (slices[i].filterIndex === filter) return slices[i];
+  }
+  return null;
+}
+
 function pieCard(title, slices, outerSlices) {
+  var active = sliceForActiveFilter(slices) || sliceForActiveFilter(outerSlices);
+  if (active) {
+    slices = [active];
+    outerSlices = null;
+  }
   var card = el('div', 'stats-pie');
   card.appendChild(el('div', 'stats-pie-title', title));
   var body = el('div', 'stats-pie-body');
@@ -2549,7 +2563,7 @@ function pieCard(title, slices, outerSlices) {
   var hasValues = slicesTotal(slices) > 0 || (dual && slicesTotal(outerSlices) > 0);
   if (!dual) {
     var list = el('ul', 'stats-legend');
-    appendLegendItems(list, slices);
+    appendLegendItems(list, slices, active ? { hideEmpty: false } : undefined);
     body.appendChild(list);
   } else if (hasValues) {
     var legends = el('div', 'stats-legend-groups');
